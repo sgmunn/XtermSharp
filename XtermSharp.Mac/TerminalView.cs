@@ -1237,7 +1237,7 @@ namespace XtermSharp.Mac {
 				if (!didSelectionDrag) {
 					if (theEvent.ModifierFlags.HasFlag (NSEventModifierMask.ShiftKeyMask)) {
 						selection.ShiftExtend (row, col);
-					} else {
+					} else if (!theEvent.ModifierFlags.HasFlag (NSEventModifierMask.ControlKeyMask)) {
 						selection.Active = false;
 						selection.SetSoftStart (row, col);
 					}
@@ -1245,6 +1245,19 @@ namespace XtermSharp.Mac {
 			}
 
 			didSelectionDrag = false;
+
+			if (theEvent.ModifierFlags.HasFlag (NSEventModifierMask.ControlKeyMask)) {
+				OnShowContextMenu (theEvent);
+			}
+		}
+
+		public override void RightMouseUp (NSEvent theEvent)
+		{
+			OnShowContextMenu (theEvent);
+		}
+
+		protected virtual void OnShowContextMenu(NSEvent theEvent)
+		{
 		}
 
 		public override void MouseDragged (NSEvent theEvent)
