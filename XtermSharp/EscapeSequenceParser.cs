@@ -309,6 +309,8 @@ namespace XtermSharp {
 		List<int> _pars;
 		string _collect;
 		unsafe PrintHandler printHandler = (data, start, end) => { };
+		public Action PrintStateReset = () => { };
+
 
 		TransitionTable table;
 		public EscapeSequenceParser ()
@@ -435,6 +437,7 @@ namespace XtermSharp {
 			_pars.Add (0);
 			_collect = "";
 			ActiveDcsHandler = null;
+			PrintStateReset ();
 		}
 
 		unsafe public void Parse (byte *data, int len)
@@ -584,6 +587,7 @@ namespace XtermSharp {
 					pars.Add (0);
 					collect = "";
 					dcs = -1;
+					PrintStateReset ();
 					break;
 				case ParserAction.DcsHook:
 					if (DcsHandlers.TryGetValue (collect + (char)code, out dcsHandler))
@@ -608,6 +612,7 @@ namespace XtermSharp {
 					pars.Add (0);
 					collect = "";
 					dcs = -1;
+					PrintStateReset ();
 					break;
 				case ParserAction.OscStart:
 					if (~print != 0) {
@@ -617,13 +622,13 @@ namespace XtermSharp {
 					osc = "";
 					break;
 				case ParserAction.OscPut:
-					for (var j = i + 1; ; j++) {
+					for (var j = i; ; j++) {
 						if (j > len || (data [j] < 0x20) || (data [j] > 0x7f && data [j] < 0x9f)) {
 							var block = new byte [j - (i+1)];
 							for (int k = i+1; k < j; k++)
 								block [k-i-1] = data [k];
 							// TODO: Audit, the code below as I would not like the code below to abort on invalid UTF8
-			    // So we need a way of producing memory blocks.
+							// So we need a way of producing memory blocks.
 							osc += System.Text.Encoding.UTF8.GetString (block);
 								 
 							i = j - 1;
@@ -665,6 +670,7 @@ namespace XtermSharp {
 					pars.Add (0);
 					collect = "";
 					dcs = -1;
+					PrintStateReset ();
 					break;
 				}
 				currentState = (ParserState)(transition & 15);
