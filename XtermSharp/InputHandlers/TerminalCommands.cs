@@ -7,7 +7,7 @@ namespace XtermSharp {
 	/// Used by input handlers to perform commands on the terminal and the active buffer
 	/// </summary>
 	// TODO: unit tests, mock Terminal
-	internal class TerminalCommands {
+	public class TerminalCommands {
 		readonly Terminal terminal;
 		bool savedMarginMode;
 		bool savedOriginMode;
@@ -269,14 +269,14 @@ namespace XtermSharp {
 				switch (pars [0]) {
 				case 5:
 					// status report
-					terminal.EmitData ("\x1b[0n");
+					terminal.SendResponse ("\x1b[0n");
 					break;
 				case 6:
 					// cursor position
 					var y = Math.Max (1, buffer.Y + 1 - (terminal.OriginMode ? buffer.ScrollTop : 0));
 					// Need the max, because the cursor could be before the leftMargin
 					var x = Math.Max (1, buffer.X + 1 - (terminal.OriginMode ? buffer.MarginLeft : 0));
-					terminal.EmitData ($"\x1b[{y};{x}R");
+					terminal.SendResponse ($"\x1b[{y};{x}R");
 					break;
 				}
 			} else if (collect == "?") {
@@ -288,7 +288,7 @@ namespace XtermSharp {
 					var y = buffer.Y + 1 - (terminal.OriginMode ? buffer.ScrollTop : 0);
 					// Need the max, because the cursor could be before the leftMargin
 					var x = Math.Max (1, buffer.X + 1 - (IsUsingMargins () ? buffer.MarginLeft : 0));
-					terminal.EmitData ($"\x1b[?{y};{x}1R");
+					terminal.SendResponse ($"\x1b[?{y};{x}1R");
 					break;
 				case 15:
 					// Request printer status report, we respond "We are ready"
