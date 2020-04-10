@@ -611,6 +611,19 @@ namespace XtermSharp {
 			}
 		}
 
+		/// <summary>
+		/// Provides a list of environment variable overrides that can be combined with a dictionary of other
+		/// environment variables.
+		/// </summary>
+		/// <param name="termName"></param>
+		/// <returns></returns>
+		public static IEnumerable<KeyValuePair<string, string>> GetEnvironmentVariableOverrides (string termName = null)
+		{
+			yield return new KeyValuePair<string, string>("TERM", termName ?? "xterm-256color");
+
+			// Without this, tools like "vi" produce sequences that are not UTF-8 friendly
+			yield return new KeyValuePair<string, string>("LANG", "en_US.UTF8");
+		}
 
 		/// <summary>
 		/// Provides a baseline set of environment variables that would be useful to run the terminal,
@@ -620,17 +633,12 @@ namespace XtermSharp {
 		public static string [] GetEnvironmentVariables (string termName = null)
 		{
 			var l = new List<string> ();
-			if (termName == null)
-				termName = "xterm-256color";
-
-			l.Add ("TERM=" + termName);
-
-			// Without this, tools like "vi" produce sequences that are not UTF-8 friendly
-			l.Add ("LANG=en_US.UTF-8");
 			var env = Environment.GetEnvironmentVariables ();
 			foreach (var x in new [] { "LOGNAME", "USER", "DISPLAY", "LC_TYPE", "USER", "HOME", "PATH" })
 				if (env.Contains (x))
 					l.Add ($"{x}={env [x]}");
+			foreach (var x in GetEnvironmentVariableOverrides(termName))
+				l.Add($"{x.Key}={x.Value}");
 			return l.ToArray ();
 		}
 	}
