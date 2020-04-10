@@ -6,161 +6,12 @@ namespace XtermSharp {
 	/// <summary>
 	/// Used by input handlers to perform commands on the terminal and the active buffer
 	/// </summary>
-	// TODO: unit tests, mock Terminal
-	public class TerminalCommands {
+	public class TerminalCommandHandler {
 		readonly Terminal terminal;
-		bool savedMarginMode;
-		bool savedOriginMode;
-		bool savedWraparound;
-		bool savedReverseWraparound;
 
-		public TerminalCommands (Terminal terminal)
+		public TerminalCommandHandler (Terminal terminal)
 		{
 			this.terminal = terminal;
-		}
-
-		/// <summary>
-		// CSI Ps A
-		// Cursor Up Ps Times (default = 1) (CUU).
-		/// </summary>
-		public void CursorUp (int [] pars)
-		{
-			int param = Math.Max (pars.Length > 0 ? pars [0] : 1, 1);
-			var buffer = terminal.Buffer;
-			var top = buffer.ScrollTop;
-
-			if (buffer.Y < top) {
-				top = 0;
-			}
-
-			if (buffer.Y - param < top)
-				buffer.Y = top;
-			else
-				buffer.Y -= param;
-		}
-
-		/// <summary>
-		// CSI Ps B
-		// Cursor Down Ps Times (default = 1) (CUD).
-		/// </summary>
-		public void CursorDown (int [] pars)
-		{
-			int param = Math.Max (pars.Length > 0 ? pars [0] : 1, 1);
-			var buffer = terminal.Buffer;
-			var bottom = buffer.ScrollBottom;
-
-			// When the cursor starts below the scroll region, CUD moves it down to the
-			// bottom of the screen.
-			if (buffer.Y > bottom) {
-				bottom = buffer.Rows - 1;
-			}
-
-			var newY = buffer.Y + param;
-
-			// review
-			//if (buffer.Y > buffer.ScrollBottom)
-			//	buffer.Y = buffer.ScrollBottom - 1;
-			if (newY >= bottom)
-				buffer.Y = bottom;
-			else
-				buffer.Y = newY;
-
-			// If the end of the line is hit, prevent this action from wrapping around to the next line.
-			if (buffer.X >= terminal.Cols)
-				buffer.X--;
-		}
-
-
-		/// <summary>
-		// CSI Ps C
-		// Cursor Forward Ps Times (default = 1) (CUF).
-		/// </summary>
-		public void CursorForward (int [] pars)
-		{
-			int param = Math.Max (pars.Length > 0 ? pars [0] : 1, 1);
-			var buffer = terminal.Buffer;
-			var right = terminal.MarginMode ? buffer.MarginRight : buffer.Cols - 1;
-
-			if (buffer.X > right) {
-				right = buffer.Cols - 1;
-			}
-
-			buffer.X += param;
-			if (buffer.X > right) {
-				buffer.X = right;
-			}
-		}
-
-		/// <summary>
-		/// CSI Ps D
-		/// Cursor Backward Ps Times (default = 1) (CUB).
-		/// </summary>
-		public void CursorBackward (int [] pars)
-		{
-			int param = Math.Max (pars.Length > 0 ? pars [0] : 1, 1);
-			var buffer = terminal.Buffer;
-
-			// What is our left margin - depending on the settings.
-			var left = terminal.MarginMode ? buffer.MarginLeft : 0;
-
-			// If the cursor is positioned before the margin, we can go backwards to the first column
-			if (buffer.X < left) {
-				left = 0;
-			}
-			buffer.X -= param;
-
-			if (buffer.X < left) {
-				buffer.X = left;
-			}
-		}
-
-		/// <summary>
-		/// ESC E
-		/// C1.NEL
-		///   DEC mnemonic: NEL (https://vt100.net/docs/vt510-rm/NEL)
-		///   Moves cursor to first position on next line.
-		/// </summary>
-		public void NextLine ()
-		{
-			terminal.Buffer.X = IsUsingMargins () ? terminal.Buffer.MarginLeft : 0;
-			terminal.Index ();
-		}
-
-		/// <summary>
-		/// CSI Ps G
-		/// Cursor Character Absolute  [column] (default = [row,1]) (CHA).
-		/// </summary>
-		public void CursorCharAbsolute (int [] pars)
-		{
-			int param = Math.Max (pars.Length > 0 ? pars [0] : 1, 1);
-			var buffer = terminal.Buffer;
-
-			buffer.X = (IsUsingMargins () ? buffer.MarginLeft : 0) + Math.Min (param - 1, buffer.Cols - 1);
-		}
-
-		/// <summary>
-		/// CSI Ps ; Ps H
-		/// Cursor Position [row;column] (default = [1,1]) (CUP).
-		/// </summary>
-		public void CursorPosition (int [] pars)
-		{
-			int col, row;
-			switch (pars.Length) {
-			case 1:
-				row = pars [0] - 1;
-				col = 0;
-				break;
-			case 2:
-				row = pars [0] - 1;
-				col = pars [1] - 1;
-				break;
-			default:
-				col = 0;
-				row = 0;
-				break;
-			}
-
-			SetCursor (Math.Min (Math.Max (col, 0), terminal.Cols - 1), Math.Min (Math.Max (row, 0), terminal.Rows - 1));
 		}
 
 		/// <summary>
@@ -362,47 +213,6 @@ namespace XtermSharp {
 		}
 
 		/// <summary>
-		/// http://vt100.net/docs/vt220-rm/table4-10.html
-		///
-		/// ! - CSI ! p   Soft terminal reset (DECSTR). */
-		/// </summary>
-		public void SoftReset ()
-		{
-			var buffer = terminal.Buffer;
-
-			terminal.CursorHidden = false;
-			terminal.InsertMode = false;
-			terminal.OriginMode = false;
-
-			terminal.Wraparound = true;  // defaults: xterm - true, vt100 - false
-			terminal.ReverseWraparound = false;
-			terminal.ApplicationKeypad = false;
-			terminal.SyncScrollArea ();
-			terminal.ApplicationCursor = false;
-			terminal.CurAttr = CharData.DefaultAttr;
-
-			terminal.Charset = null;
-			terminal.SetgLevel (0);
-
-			savedOriginMode = false;
-			savedMarginMode = false;
-			savedWraparound = false;
-			savedReverseWraparound = false;
-
-			//syncScrollArea ()
-			//applicationCursor = false
-			buffer.ScrollTop = 0;
-			buffer.ScrollBottom = buffer.Rows - 1;
-			buffer.SavedAttr = CharData.DefaultAttr;
-			buffer.SavedY = 0;
-			buffer.SavedX = 0;
-			buffer.MarginRight = buffer.Cols;
-			buffer.MarginLeft = 0;
-			terminal.Charset = null;
-			//conformance = .vt500
-		}
-
-		/// <summary>
 		/// CSI Ps ; Ps r
 		///   Set Scrolling Region [top;bottom] (default = full size of win-
 		///   dow) (DECSTBM).
@@ -432,62 +242,7 @@ namespace XtermSharp {
 				buffer.ScrollTop = top;
 			}
 
-			SetCursor (0, 0);
-		}
-
-		public void SetMargins (int [] pars)
-		{
-			var buffer = terminal.Buffer;
-			var left = (pars.Length > 0 ? pars [0] : 1) - 1;
-			var right = (pars.Length > 1 ? pars [1] : buffer.Cols) - 1;
-
-			left = Math.Min (left, right);
-			buffer.MarginLeft = left;
-			buffer.MarginRight = right;
-		}
-
-		/// <summary>
-		/// Sets the location of the cursor 
-		/// </summary>
-		public void SetCursor (int col, int row)
-		{
-			var buffer = terminal.Buffer;
-			if (terminal.OriginMode) {
-				buffer.X = col + (IsUsingMargins () ? buffer.MarginLeft : 0);
-				buffer.Y = buffer.ScrollTop + row;
-			} else {
-				buffer.X = col;
-				buffer.Y = row;
-			}
-		}
-
-		/// <summary>
-		/// CSI s
-		/// ESC 7
-		/// Save cursor (ANSI.SYS).
-		/// </summary>
-		public void SaveCursor ()
-		{
-			var buffer = terminal.Buffer;
-			buffer.SavedX = buffer.X;
-			buffer.SavedY = buffer.Y;
-			buffer.SavedAttr = terminal.CurAttr;
-			savedWraparound = terminal.Wraparound;
-			savedReverseWraparound = terminal.ReverseWraparound;
-			savedMarginMode = terminal.MarginMode;
-			savedOriginMode = terminal.OriginMode;
-		}
-
-		public void RestoreCursor ()
-		{
-			var buffer = terminal.Buffer;
-			buffer.X = buffer.SavedX;
-			buffer.Y = buffer.SavedY;
-			terminal.CurAttr = buffer.SavedAttr;
-			terminal.MarginMode = savedMarginMode;
-			terminal.OriginMode = savedOriginMode;
-			terminal.Wraparound = savedWraparound;
-			terminal.ReverseWraparound = savedReverseWraparound;
+			terminal.SetCursor (0, 0);
 		}
 
 		/// <summary>

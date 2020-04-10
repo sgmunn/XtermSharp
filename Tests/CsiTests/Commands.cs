@@ -6,17 +6,9 @@ using Xunit;
 namespace XtermSharp.Tests.CsiTests {
 	static class Commands {
 		/// <summary>
-		/// Move cursor to point (CursorPosition)
-		/// </summary>
-		public static void CUP (this TerminalCommands commander, int col, int row)
-		{
-			commander.CursorPosition (new int [] { row, col });
-		}
-
-		/// <summary>
 		/// Sets a mode
 		/// </summary>
-		public static void DECSET (this TerminalCommands commander, int mode)
+		public static void DECSET (this TerminalCommandHandler commander, int mode)
 		{
 			// TODO:
 			//commander.

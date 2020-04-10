@@ -10,12 +10,12 @@ namespace XtermSharp.Tests {
 		{
 			this.terminalDelegate = new TerminalDelegate ();
 			this.Terminal = new Terminal (this.terminalDelegate);
-			this.Commander = new TerminalCommands (this.Terminal);
+			this.Commander = new TerminalCommandHandler (this.Terminal);
 		}
 
 		public Terminal Terminal { get; private set; }
 
-		public TerminalCommands Commander { get; private set; }
+		public TerminalCommandHandler Commander { get; private set; }
 
 		public void Dispose ()
 		{

@@ -5,6 +5,10 @@ using System.Text;
 namespace XtermSharp {
 
 	public class Terminal {
+		const int MINIMUM_COLS = 2;
+		const int MINIMUM_ROWS = 1;
+
+		//static Dictionary<int, int> matchColorCache = new Dictionary<int, int> ();
 		readonly ITerminalDelegate terminalDelegate;
 		readonly ControlCodes controlCodes;
 		readonly List<string> titleStack;
@@ -12,18 +16,27 @@ namespace XtermSharp {
 		readonly BufferSet buffers;
 		readonly InputHandler input;
 
-		const int MINIMUM_COLS = 2;
-		const int MINIMUM_ROWS = 1;
+		BufferLine blankLine;
 
 		// modes
 		bool insertMode;
 		bool bracketedPasteMode;
 
+		// saved modes
+		bool savedMarginMode;
+		bool savedOriginMode;
+		bool savedWraparound;
+		bool savedReverseWraparound;
+
+		// unsorted
 		bool applicationKeypad, applicationCursor;
 		bool cursorHidden;
 		Dictionary<byte, string> charset;
 		int gcharset;
-
+		int gLevel;
+		int refreshStart = Int32.MaxValue;
+		int refreshEnd = -1;
+		bool userScrolling;
 
 		public Terminal (ITerminalDelegate terminalDelegate = null, TerminalOptions options = null)
 		{
@@ -38,7 +51,6 @@ namespace XtermSharp {
 			Rows = Math.Max (Options.Rows, MINIMUM_ROWS);
 
 			buffers = new BufferSet (this);
-
 			Setup ();
 		}
 
@@ -73,39 +85,82 @@ namespace XtermSharp {
 		public BufferSet Buffers => buffers;
 
 		/// <summary>
-		/// Gets or sets the margin mode of the terminal
+		/// Gets the margin mode of the terminal
 		/// </summary>
 		public bool MarginMode { get; internal set; }
 
 		/// <summary>
-		/// Gets or sets the origin mode of the terminal
+		/// Gets the origin mode of the terminal
 		/// </summary>
 		public bool OriginMode { get; internal set; }
 
 		/// <summary>
-		/// Gets or sets the origin mode of the terminal
+		/// Gets the Wraparound mode of the terminal
 		/// </summary>
 		public bool Wraparound { get; internal set; }
 
 		/// <summary>
-		/// Gets or sets the origin mode of the terminal
+		/// Gets the ReverseWraparound mode of the terminal
 		/// </summary>
 		public bool ReverseWraparound { get; internal set; }
 
 		/// <summary>
-		/// Gets or sets the current mouse mode
+		/// Gets the current mouse mode
 		/// </summary>
 		public MouseMode MouseMode { get; internal set; }
 
 		/// <summary>
-		/// Gets or sets the current mouse protocol
+		/// Gets the current mouse protocol
 		/// </summary>
 		public MouseProtocolEncoding MouseProtocol { get; internal set; }
 
 		/// <summary>
-		/// Gets or sets a value indicating whether the terminal can be resized to 132
+		/// Gets a value indicating whether the terminal can be resized to 132
 		/// </summary>
 		public bool Allow80To132 { get; internal set; }
+
+		public Dictionary<byte, string> Charset {
+			get => charset;
+			set {
+				charset = value;
+			}
+		}
+
+		public bool ApplicationCursor { get; internal set; }
+		public int SavedCols { get; internal set; }
+		public bool ApplicationKeypad { get; internal set; }
+
+		public bool SendFocus { get; internal set; }
+
+		public bool CursorHidden { get; internal set; }
+		public bool BracketedPasteMode { get; internal set; }
+
+		public TerminalOptions Options { get; private set; }
+		public int Cols { get; private set; }
+		public int Rows { get; private set; }
+		public bool InsertMode;
+		public int CurAttr;
+
+		/// <summary>
+		/// Provides a baseline set of environment variables that would be useful to run the terminal,
+		/// you can customzie these accordingly.
+		/// </summary>
+		public static string [] GetEnvironmentVariables (string termName = null)
+		{
+			var l = new List<string> ();
+			if (termName == null)
+				termName = "xterm-256color";
+
+			l.Add ("TERM=" + termName);
+
+			// Without this, tools like "vi" produce sequences that are not UTF-8 friendly
+			l.Add ("LANG=en_US.UTF-8");
+			var env = Environment.GetEnvironmentVariables ();
+			foreach (var x in new [] { "LOGNAME", "USER", "DISPLAY", "LC_TYPE", "USER", "HOME", "PATH" })
+				if (env.Contains (x))
+					l.Add ($"{x}={env [x]}");
+			return l.ToArray ();
+		}
 
 		/// <summary>
 		/// Called by input handlers to set the title
@@ -225,23 +280,20 @@ namespace XtermSharp {
 			terminalDelegate.Send (buffer);
 		}
 
+		/// <summary>
+		/// Reports an error to the system log
+		/// </summary>
 		public void Error (string txt, params object [] args)
 		{
 			Report ("ERROR", txt, args);
 		}
 
-		public bool Debug { get; set; }
+		/// <summary>
+		/// Logs a message to the system log
+		/// </summary>
 		public void Log (string text, params object [] args)
 		{
 			Report ("LOG", text, args);
-		}
-
-		void Report (string prefix, string text, object [] args)
-		{
-			Console.WriteLine ($"{prefix}: {text}");
-			for (int i = 0; i < args.Length; i++)
-				Console.WriteLine ("    {0}: {1}", i, args [i]);
-
 		}
 
 		public void Feed (byte [] data, int len = -1)
@@ -259,32 +311,6 @@ namespace XtermSharp {
 			var bytes = Encoding.UTF8.GetBytes (text);
 			Feed (bytes, bytes.Length);
 		}
-
-		public Dictionary<byte, string> Charset {
-			get => charset;
-			set {
-				charset = value;
-			}
-		}
-
-		public bool ApplicationCursor { get; internal set; }
-		public int SavedCols { get; internal set; }
-		public bool ApplicationKeypad { get; internal set; }
-
-		public bool SendFocus { get; internal set; }
-
-		public bool CursorHidden { get; internal set; }
-		public bool BracketedPasteMode { get; internal set; }
-
-		public TerminalOptions Options { get; private set; }
-		public int Cols { get; private set; }
-		public int Rows { get; private set; }
-		public bool InsertMode;
-		public int CurAttr;
-		int gLevel;
-		int refreshStart = Int32.MaxValue;
-		int refreshEnd = -1;
-		bool userScrolling;
 
 		internal void UpdateRange (int y)
 		{
@@ -346,7 +372,6 @@ namespace XtermSharp {
 				buffer.X--;
 		}
 
-		BufferLine blankLine;
 		internal void Scroll (bool isWrapped = false)
 		{
 			var buffer = Buffer;
@@ -655,8 +680,6 @@ namespace XtermSharp {
 
 		}
 
-		static Dictionary<int, int> matchColorCache = new Dictionary<int, int> ();
-
 		public int MatchColor (int r1, int g1, int b1)
 		{
 			throw new NotImplementedException ();
@@ -694,25 +717,210 @@ namespace XtermSharp {
 		}
 
 
+		#region Cursor Commands
 		/// <summary>
-		/// Provides a baseline set of environment variables that would be useful to run the terminal,
-		/// you can customzie these accordingly.
+		/// Sets the location of the cursor (zero based)
 		/// </summary>
-		public static string [] GetEnvironmentVariables (string termName = null)
+		public void SetCursor (int col, int row)
 		{
-			var l = new List<string> ();
-			if (termName == null)
-				termName = "xterm-256color";
+			var buffer = Buffer;
 
-			l.Add ("TERM=" + termName);
+			// make sure we stay within the boundaries
+			col = Math.Min (Math.Max (col, 0), buffer.Cols - 1);
+			row = Math.Min (Math.Max (row, 0), buffer.Rows - 1);
 
-			// Without this, tools like "vi" produce sequences that are not UTF-8 friendly
-			l.Add ("LANG=en_US.UTF-8");
-			var env = Environment.GetEnvironmentVariables ();
-			foreach (var x in new [] { "LOGNAME", "USER", "DISPLAY", "LC_TYPE", "USER", "HOME", "PATH" })
-				if (env.Contains (x))
-					l.Add ($"{x}={env [x]}");
-			return l.ToArray ();
+			if (OriginMode) {
+				buffer.X = col + (IsUsingMargins () ? buffer.MarginLeft : 0);
+				buffer.Y = buffer.ScrollTop + row;
+			} else {
+				buffer.X = col;
+				buffer.Y = row;
+			}
+		}
+		/// <summary>
+		// Moves the cursor up by rows
+		/// </summary>
+		public void CursorUp (int rows)
+		{
+			var buffer = Buffer;
+			var top = buffer.ScrollTop;
+
+			if (buffer.Y < top) {
+				top = 0;
+			}
+
+			if (buffer.Y - rows < top)
+				buffer.Y = top;
+			else
+				buffer.Y -= rows;
+		}
+
+		/// <summary>
+		// Moves the cursor down by rows
+		/// </summary>
+		public void CursorDown (int rows)
+		{
+			var buffer = Buffer;
+			var bottom = buffer.ScrollBottom;
+
+			// When the cursor starts below the scroll region, CUD moves it down to the
+			// bottom of the screen.
+			if (buffer.Y > bottom) {
+				bottom = buffer.Rows - 1;
+			}
+
+			var newY = buffer.Y + rows;
+
+			if (newY >= bottom)
+				buffer.Y = bottom;
+			else
+				buffer.Y = newY;
+
+			// If the end of the line is hit, prevent this action from wrapping around to the next line.
+			if (buffer.X >= Cols)
+				buffer.X--;
+		}
+
+		/// <summary>
+		// Moves the cursor forward by cols
+		/// </summary>
+		public void CursorForward (int cols)
+		{
+			var buffer = Buffer;
+			var right = MarginMode ? buffer.MarginRight : buffer.Cols - 1;
+
+			if (buffer.X > right) {
+				right = buffer.Cols - 1;
+			}
+
+			buffer.X += cols;
+			if (buffer.X > right) {
+				buffer.X = right;
+			}
+		}
+
+		/// <summary>
+		// Moves the cursor forward by cols
+		/// </summary>
+		public void CursorBackward (int cols)
+		{
+			var buffer = Buffer;
+
+			// What is our left margin - depending on the settings.
+			var left = MarginMode ? buffer.MarginLeft : 0;
+
+			// If the cursor is positioned before the margin, we can go backwards to the first column
+			if (buffer.X < left) {
+				left = 0;
+			}
+			buffer.X -= cols;
+
+			if (buffer.X < left) {
+				buffer.X = left;
+			}
+		}
+
+		/// <summary>
+		/// Moves the cursor to the given column
+		/// </summary>
+		public void CursorCharAbsolute (int col)
+		{
+			var buffer = Buffer;
+			buffer.X = (IsUsingMargins () ? buffer.MarginLeft : 0) + Math.Min (col - 1, buffer.Cols - 1);
+		}
+
+		/// <summary>
+		/// Moves cursor to first position on next line.
+		/// ESC E
+		/// C1.NEL
+		///   DEC mnemonic: NEL (https://vt100.net/docs/vt510-rm/NEL)
+		/// </summary>
+		internal void NextLine ()
+		{
+			var buffer = Buffer;
+			buffer.X = IsUsingMargins () ? buffer.MarginLeft : 0;
+			Index ();
+		}
+
+		/// <summary>
+		/// Save cursor (ANSI.SYS).
+		/// Saves the cursor for the buffer and current modes
+		/// CSI s
+		/// ESC 7
+		/// </summary>
+		internal void SaveCursor ()
+		{
+			var buffer = Buffer;
+			buffer.SaveCursor (CurAttr);
+		}
+
+		/// <summary>
+		/// Restores the cursor and modes
+		/// </summary>
+		internal void RestoreCursor ()
+		{
+			var buffer = Buffer;
+			CurAttr = buffer.RestoreCursor();
+			MarginMode = savedMarginMode;
+			OriginMode = savedOriginMode;
+			Wraparound = savedWraparound;
+			ReverseWraparound = savedReverseWraparound;
+		}
+
+		/// <summary>
+		/// ! - CSI ! p   Soft terminal reset (DECSTR). */
+		/// http://vt100.net/docs/vt220-rm/table4-10.html
+		/// </summary>
+		internal void SoftReset ()
+		{
+			var buffer = Buffer;
+
+			CursorHidden = false;
+			InsertMode = false;
+			OriginMode = false;
+
+			Wraparound = true;  // defaults: xterm - true, vt100 - false
+			ReverseWraparound = false;
+			ApplicationKeypad = false;
+			SyncScrollArea ();
+			ApplicationCursor = false;
+			CurAttr = CharData.DefaultAttr;
+
+			Charset = null;
+			SetgLevel (0);
+
+			savedOriginMode = false;
+			savedMarginMode = false;
+			savedWraparound = false;
+			savedReverseWraparound = false;
+
+			buffer.ScrollTop = 0;
+			buffer.ScrollBottom = buffer.Rows - 1;
+			buffer.SavedAttr = CharData.DefaultAttr;
+			buffer.SavedY = 0;
+			buffer.SavedX = 0;
+			buffer.SetMargins (0, buffer.Cols - 1);
+			//conformance = .vt500
+		}
+
+		/// <summary>
+		/// Returns true if the terminal is using margins in origin mode
+		/// </summary>
+		internal bool IsUsingMargins ()
+		{
+			return OriginMode && MarginMode;
+		}
+
+		#endregion
+
+		/// <summary>
+		/// Reports a message to the system log
+		/// </summary>
+		void Report (string prefix, string text, object [] args)
+		{
+			Console.WriteLine ($"{prefix}: {text}");
+			for (int i = 0; i < args.Length; i++)
+				Console.WriteLine ("    {0}: {1}", i, args [i]);
 		}
 
 		/// <summary>
